@@ -7,15 +7,14 @@ using WitcherScriptMerger.Common;
 namespace ReleaseTools
 {
     /// <summary>
-    /// The parts of the release that Vortex depends on. Vortex lists the GitHub
-    /// releases, keeps those whose <c>name</c> passes semver validation, and
-    /// downloads <c>assets[0]</c>, so a mistake here produces a release that is
-    /// silently ignored rather than one that fails loudly.
+    /// The parts of the release that Vortex depends on. Vortex takes the newest
+    /// release by tag and downloads the asset named after that version, so a
+    /// mistake here produces a release Vortex cannot find.
     /// </summary>
     public static class ReleaseContract
     {
         /// <summary>
-        /// Turns a tag or a hand-typed version into the bare semver Vortex needs.
+        /// Turns a tag or a hand-typed version into the bare semver Vortex compares.
         /// Returns false with a reason instead of throwing so the caller can
         /// report it as a build annotation.
         /// </summary>
@@ -44,8 +43,8 @@ namespace ReleaseTools
             var parts = candidate.Split('.');
             if (parts.Length != 3 || parts.Any(part => part.Length == 0 || !part.All(char.IsDigit)))
             {
-                error = $"'{tagOrVersion}' does not resolve to bare semver (major.minor.patch). "
-                      + "Vortex filters releases with semver.valid(release.name) and would ignore it.";
+                error = $"'{tagOrVersion}' does not resolve to bare semver (major.minor.patch), "
+                      + "which Vortex needs to compare it against the installed merger.";
                 return false;
             }
 
@@ -63,12 +62,19 @@ namespace ReleaseTools
             return true;
         }
 
-        /// <summary>Asset Vortex downloads. There must be exactly one, because it takes assets[0].</summary>
-        public static string ArchiveName(string version) => $"WitcherScriptMerger-{version}.7z";
+        private const string ProductName = "WitcherScriptMerger";
 
-        /// <summary>Release title. Bare semver, unlike the tag, which keeps its "v".</summary>
-        public static string ReleaseTitle(string version) => version;
+        /// <summary>Asset Vortex downloads, named as mergerRelease.ts in game-witcher3 derives it.</summary>
+        public static string ArchiveName(string version) => $"{ProductName}-{version}.7z";
 
+        /// <summary>
+        /// Release title. Deliberately not a version: older Vortex builds offer
+        /// any release whose name passes semver.valid, then fail the download
+        /// because they have no checksum for it.
+        /// </summary>
+        public static string ReleaseTitle(string version) => $"{ProductName} {version}";
+
+        /// <summary>Release tag, named as mergerRelease.ts in game-witcher3 derives it.</summary>
         public static string TagName(string version) => "v" + version;
 
         /// <summary>

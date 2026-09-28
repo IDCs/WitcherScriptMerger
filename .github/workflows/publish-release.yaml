@@ -1,10 +1,11 @@
 name: Publish Release
 
-# Produces the archive Vortex downloads. Two parts of that contract fail
-# silently, and are enforced by ReleaseTools rather than written inline here:
-#   * the release NAME must be bare semver, since Vortex keeps only releases
-#     whose name passes semver.valid(); the tag keeps its "v" prefix.
-#   * the release must carry exactly ONE asset, since Vortex takes assets[0].
+# Produces the archive Vortex downloads. The naming contract is enforced by
+# ReleaseTools rather than written inline here:
+#   * Vortex installs the newest release by TAG and downloads the asset named
+#     after that version.
+#   * the release NAME must not be a version, since older Vortex builds offer
+#     any release whose name passes semver.valid() and then fail its checksum.
 
 on:
   push:
@@ -31,7 +32,8 @@ env:
   # KDiff3, QuickBMS and wcc_lite are ~350MB of third-party binaries kept out of
   # the repository, supplied by a tools-only release pinned by tag and hash. It
   # excludes Tools/QuickBMS/witcher3.bms, which is versioned here, so it cannot
-  # overwrite the tracked copy.
+  # overwrite the tracked copy. Its title must not be a version either, e.g.
+  # "Tools 1.0.0": older Vortex builds would offer it as a merger update.
   TOOLS_TAG: tools-1.0.0
   TOOLS_ASSET: WitcherScriptMerger-Tools-1.0.0.7z
   TOOLS_SHA256: 0A680D81377AAAA783E6AB32BE02B52B64C946B8F3CC84A124ACFDCBDADA61B8
@@ -46,8 +48,6 @@ jobs:
       archive: ${{ steps.meta.outputs.archive }}
       tag: ${{ steps.meta.outputs.tag }}
       title: ${{ steps.meta.outputs.title }}
-      archiveChecksum: ${{ steps.checksums.outputs.archiveChecksum }}
-      execChecksum: ${{ steps.checksums.outputs.execChecksum }}
 
     steps:
       - uses: actions/checkout@v4
@@ -113,12 +113,6 @@ jobs:
         shell: pwsh
         run: 7z a -t7z -mx=9 "${{ steps.meta.outputs.archive }}" ./staging/* | Select-Object -Last 3
 
-      - name: Checksums for Vortex
-        id: checksums
-        env:
-          RELEASE_VERSION: ${{ steps.meta.outputs.version }}
-        run: dotnet run --project WitcherScriptMerger.ReleaseTools -- checksums "${{ steps.meta.outputs.archive }}" staging
-
       - uses: actions/upload-artifact@v4
         with:
           name: WitcherScriptMerger
@@ -152,7 +146,4 @@ jobs:
             --repo "${{ github.repository }}" \
             --title "${{ needs.build.outputs.title }}" \
             "${TARGET[@]}" \
-            --notes "Archive MD5: ${{ needs.build.outputs.archiveChecksum }}
-          Executable MD5: ${{ needs.build.outputs.execChecksum }}
-
-          Vortex ignores this release until a matching entry is added to MD5Cache.json in the game-witcher3 extension."
+            --generate-notes

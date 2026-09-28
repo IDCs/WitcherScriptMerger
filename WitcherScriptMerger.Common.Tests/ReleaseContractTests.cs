@@ -51,25 +51,29 @@ namespace WitcherScriptMerger.Common.Tests
         [InlineData(null)]
         [InlineData("v0.6.06")]  // semver forbids leading zeros
         [InlineData("01.2.3")]
-        public void RejectsAnythingVortexWouldIgnore(string input)
+        public void AcceptsOnlyMajorMinorPatchVersions(string input)
         {
-            // Vortex keeps only releases whose name passes semver.valid, so a
-            // release named like this is published and then never seen.
+            // Vortex compares the tagged version against the installed exe's
+            // with semver.
             Assert.False(ReleaseContract.TryResolveVersion(input, out _, out var error));
             Assert.NotEmpty(error);
         }
 
         [Fact]
-        public void ReleaseIsTitledWithBareSemverWhileTheTagKeepsItsPrefix()
+        public void ReleaseTitleIsNotAVersionSoOlderVortexBuildsSkipIt()
         {
+            // Older builds offer any release whose name passes semver.valid,
+            // then reject the download because they have no checksum for it.
             Assert.True(ReleaseContract.TryResolveVersion("refs/tags/v0.6.6", out var version, out _));
-            Assert.Equal("0.6.6", ReleaseContract.ReleaseTitle(version));
-            Assert.Equal("v0.6.6", ReleaseContract.TagName(version));
+
+            Assert.Equal("WitcherScriptMerger 0.6.6", ReleaseContract.ReleaseTitle(version));
         }
 
         [Fact]
-        public void ArchiveIsNamedAfterTheVersion()
+        public void TagAndArchiveFollowTheNamesVortexDerivesFromTheVersion()
         {
+            // Vortex reads the version from the tag and picks the asset by this name.
+            Assert.Equal("v0.6.6", ReleaseContract.TagName("0.6.6"));
             Assert.Equal("WitcherScriptMerger-0.6.6.7z", ReleaseContract.ArchiveName("0.6.6"));
         }
 

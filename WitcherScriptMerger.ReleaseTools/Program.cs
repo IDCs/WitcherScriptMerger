@@ -1,8 +1,6 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
-using WitcherScriptMerger.Common;
 
 namespace ReleaseTools
 {
@@ -16,7 +14,7 @@ namespace ReleaseTools
         {
             if (args.Length == 0)
             {
-                return Fail("Usage: version <tag> | validate <stagingDir> | checksums <archive> <stagingDir>");
+                return Fail("Usage: version <tag> | validate <stagingDir>");
             }
 
             try
@@ -25,7 +23,6 @@ namespace ReleaseTools
                 {
                     "version" => Version(args.Skip(1).ToArray()),
                     "validate" => Validate(args.Skip(1).ToArray()),
-                    "checksums" => Checksums(args.Skip(1).ToArray()),
                     _ => Fail($"Unknown command '{args[0]}'."),
                 };
             }
@@ -72,45 +69,6 @@ namespace ReleaseTools
             return 1;
         }
 
-        static int Checksums(string[] args)
-        {
-            if (args.Length != 2)
-            {
-                return Fail("Usage: checksums <archive> <stagingDir>");
-            }
-
-            var archive = Md5(args[0]);
-            var executable = Md5(Path.Combine(args[1], KnownPaths.Executable));
-
-            Output("archiveChecksum", archive);
-            Output("execChecksum", executable);
-
-            // Vortex verifies both before it will use a download, so a release is
-            // inert until this entry is added on that side.
-            var version = Environment.GetEnvironmentVariable("RELEASE_VERSION") ?? string.Empty;
-            Summary($$"""
-                ## MD5Cache.json entry
-
-                Add to `extensions/games/game-witcher3/assets/MD5Cache.json` in Vortex.
-                The release is ignored until this lands.
-
-                ```json
-                {
-                  "version": "{{version}}",
-                  "archiveChecksum": "{{archive}}",
-                  "execChecksum": "{{executable}}"
-                }
-                ```
-                """);
-            return 0;
-        }
-
-        static string Md5(string path)
-        {
-            using var stream = File.OpenRead(path);
-            return Convert.ToHexString(MD5.HashData(stream));
-        }
-
         static void Output(string key, string value)
         {
             Console.WriteLine($"{key}={value}");
@@ -118,19 +76,6 @@ namespace ReleaseTools
             if (!string.IsNullOrEmpty(file))
             {
                 File.AppendAllText(file, $"{key}={value}{Environment.NewLine}");
-            }
-        }
-
-        static void Summary(string markdown)
-        {
-            var file = Environment.GetEnvironmentVariable("GITHUB_STEP_SUMMARY");
-            if (!string.IsNullOrEmpty(file))
-            {
-                File.AppendAllText(file, markdown + Environment.NewLine);
-            }
-            else
-            {
-                Console.WriteLine(markdown);
             }
         }
 
