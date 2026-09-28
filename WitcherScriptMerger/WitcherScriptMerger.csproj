@@ -1,13 +1,14 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net6.0-windows</TargetFramework>
+    <TargetFramework>net9.0-windows</TargetFramework>
     <OutputType>WinExe</OutputType>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <UseWindowsForms>true</UseWindowsForms>
     <UseWPF>true</UseWPF>
     <CodeAnalysisRuleSet>DeadCodeDetection.ruleset</CodeAnalysisRuleSet>
-    <!--<RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <SelfContained>true</SelfContained>-->
+    <!-- Ships the runtime, so the tool runs without .NET 9 installed. -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
   </PropertyGroup>
   <PropertyGroup>
     <ApplicationIcon>WolfMedallion.ico</ApplicationIcon>
@@ -20,6 +21,14 @@
   <ItemGroup>
     <Content Include="appsettings.json" />
     <Content Include="WolfMedallion.ico" />
+    <!-- The bundle definition is ours to maintain, unlike the tool binaries
+         beside it, so it is versioned here and copied into the build. -->
+    <Content Include="Tools\QuickBMS\witcher3.bms">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\WitcherScriptMerger.Common\WitcherScriptMerger.Common.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
@@ -27,8 +36,8 @@
     <PackageReference Include="Microsoft.DotNet.UpgradeAssistant.Extensions.Default.Analyzers" Version="0.3.261602">
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.Windows.Compatibility" Version="6.0.0" />
-	<PackageReference Include="System.Configuration.ConfigurationManager" Version="6.0.0" />
+    <PackageReference Include="Microsoft.Windows.Compatibility" Version="9.0.0" />
+	<PackageReference Include="System.Configuration.ConfigurationManager" Version="9.0.0" />
   </ItemGroup>
   <PropertyGroup>
     <PreBuildEvent Condition=" '$(OS)' != 'Unix' ">if exist "$(TargetPath).locked" del "$(TargetPath).locked"
