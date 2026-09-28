@@ -1,0 +1,158 @@
+name: Publish Release
+
+# Produces the archive Vortex downloads. Two parts of that contract fail
+# silently, and are enforced by ReleaseTools rather than written inline here:
+#   * the release NAME must be bare semver, since Vortex keeps only releases
+#     whose name passes semver.valid(); the tag keeps its "v" prefix.
+#   * the release must carry exactly ONE asset, since Vortex takes assets[0].
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build, with or without the leading v (e.g. 0.6.6)"
+        required: true
+      publish:
+        description: "Create the GitHub release"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-release
+  cancel-in-progress: false
+
+env:
+  # KDiff3, QuickBMS and wcc_lite are ~350MB of third-party binaries kept out of
+  # the repository, supplied by a tools-only release pinned by tag and hash. It
+  # excludes Tools/QuickBMS/witcher3.bms, which is versioned here, so it cannot
+  # overwrite the tracked copy.
+  TOOLS_TAG: tools-1.0.0
+  TOOLS_ASSET: WitcherScriptMerger-Tools-1.0.0.7z
+  TOOLS_SHA256: 0A680D81377AAAA783E6AB32BE02B52B64C946B8F3CC84A124ACFDCBDADA61B8
+
+jobs:
+  build:
+    name: Build and package
+    runs-on: windows-latest
+
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      archive: ${{ steps.meta.outputs.archive }}
+      tag: ${{ steps.meta.outputs.tag }}
+      title: ${{ steps.meta.outputs.title }}
+      archiveChecksum: ${{ steps.checksums.outputs.archiveChecksum }}
+      execChecksum: ${{ steps.checksums.outputs.execChecksum }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Test
+        run: dotnet test WitcherScriptMerger.Common.Tests/WitcherScriptMerger.Common.Tests.csproj --nologo
+
+      - name: Compute build metadata
+        id: meta
+        run: dotnet run --project WitcherScriptMerger.ReleaseTools -- version "${{ github.event.inputs.version || github.ref }}"
+
+      - name: Build
+        run: >
+          dotnet publish WitcherScriptMerger/WitcherScriptMerger.csproj
+          -c Release -o publish
+          -p:Version=${{ steps.meta.outputs.version }}
+
+      - name: Cache tools payload
+        id: tools-cache
+        uses: actions/cache@v4
+        with:
+          path: tools-payload.7z
+          key: tools-${{ env.TOOLS_TAG }}-${{ env.TOOLS_SHA256 }}
+
+      - name: Fetch tools payload
+        if: steps.tools-cache.outputs.cache-hit != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download "$env:TOOLS_TAG" --repo "${{ github.repository }}" `
+            --pattern "$env:TOOLS_ASSET" --output tools-payload.7z --clobber
+        shell: pwsh
+
+      - name: Verify tools payload
+        shell: pwsh
+        run: |
+          $actual = (Get-FileHash tools-payload.7z -Algorithm SHA256).Hash
+          if ($actual -ne $env:TOOLS_SHA256) {
+            Write-Output "::error::Tools payload hash mismatch. Expected $env:TOOLS_SHA256, got $actual."
+            exit 1
+          }
+          Write-Output "Tools payload verified: $actual"
+
+      - name: Stage archive contents
+        shell: pwsh
+        run: |
+          7z x tools-payload.7z -opayload -y | Out-Null
+          New-Item -ItemType Directory -Force staging | Out-Null
+          Copy-Item payload/Tools -Destination staging -Recurse -Force
+          Copy-Item publish/* -Destination staging -Recurse -Force
+          # A .NET build names its config after the assembly; the published
+          # layout and Vortex both use the apphost name.
+          Copy-Item staging/WitcherScriptMerger.dll.config staging/WitcherScriptMerger.exe.config -Force
+
+      - name: Verify staged layout
+        run: dotnet run --project WitcherScriptMerger.ReleaseTools -- validate staging
+
+      - name: Compress
+        shell: pwsh
+        run: 7z a -t7z -mx=9 "${{ steps.meta.outputs.archive }}" ./staging/* | Select-Object -Last 3
+
+      - name: Checksums for Vortex
+        id: checksums
+        env:
+          RELEASE_VERSION: ${{ steps.meta.outputs.version }}
+        run: dotnet run --project WitcherScriptMerger.ReleaseTools -- checksums "${{ steps.meta.outputs.archive }}" staging
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WitcherScriptMerger
+          path: ${{ steps.meta.outputs.archive }}
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') || github.event.inputs.publish == 'true'
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: WitcherScriptMerger
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # A tag push verifies the tag; a manual run creates it against this
+          # SHA, so the release always points at the commit that was built.
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TARGET=(--verify-tag)
+          else
+            TARGET=(--target "${{ github.sha }}")
+          fi
+          gh release create "${{ needs.build.outputs.tag }}" \
+            "${{ needs.build.outputs.archive }}" \
+            --repo "${{ github.repository }}" \
+            --title "${{ needs.build.outputs.title }}" \
+            "${TARGET[@]}" \
+            --notes "Archive MD5: ${{ needs.build.outputs.archiveChecksum }}
+          Executable MD5: ${{ needs.build.outputs.execChecksum }}
+
+          Vortex ignores this release until a matching entry is added to MD5Cache.json in the game-witcher3 extension."
