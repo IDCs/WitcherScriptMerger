@@ -2,6 +2,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using WitcherScriptMerger.Common;
 
 namespace WitcherScriptMerger.Tools
 {
@@ -14,6 +15,18 @@ namespace WitcherScriptMerger.Tools
         {
             if (!ValidateResources(bundlePath))
                 return 1;
+
+            // Past 4GB QuickBMS reports 32 bit offsets, so content beyond the
+            // boundary extracts from the wrong place. Refuse rather than hand
+            // back something that looks valid and is not.
+            if (!KnownPaths.CanReadBundle(new FileInfo(bundlePath).Length))
+            {
+                Program.MainForm.ShowError(
+                    "This bundle is larger than QuickBMS can address, so its contents can't be "
+                    + "extracted reliably:\n\n" + bundlePath,
+                    "Bundle Too Large");
+                return 1;
+            }
 
             if (!Directory.Exists(outputDir))
                 Directory.CreateDirectory(outputDir);
@@ -49,7 +62,10 @@ namespace WitcherScriptMerger.Tools
 
             var contentPaths = new List<string>();
 
-            var startInfo = BuildStartInfo($"-l \"{PluginPath}\" \"{bundlePath}\"");
+            // -Y answers the prompt QuickBMS raises for bundles over 4GB, which
+            // has no console to answer it in. Names stay accurate past that
+            // size; only the offsets truncate, which matters to UnpackFile.
+            var startInfo = BuildStartInfo($"-l -Y \"{PluginPath}\" \"{bundlePath}\"");
 
             using (var bmsProc = new Process { StartInfo = startInfo })
             {

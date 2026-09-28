@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Xml.Serialization;
+using WitcherScriptMerger.Common;
 using WitcherScriptMerger.Inventory;
 
 namespace WitcherScriptMerger.FileIndex
@@ -107,7 +108,7 @@ namespace WitcherScriptMerger.FileIndex
 
         public static bool IsBundle(string path) => path.EndsWithIgnoreCase(".bundle");
 
-        public static bool IsTextFile(string path) => (path.EndsWithIgnoreCase(".ws") || path.EndsWithIgnoreCase(".xml") || path.EndsWithIgnoreCase(".txt") || path.EndsWithIgnoreCase(".csv"));
+        public static bool IsTextFile(string path) => KnownPaths.IsMergeableFile(path);
 
         public override string ToString()
         {

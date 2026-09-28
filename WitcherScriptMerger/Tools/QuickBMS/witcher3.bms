@@ -1,0 +1,120 @@
+# The Witcher 3 (script 0.2.0)
+# script for QuickBMS http://quickbms.aluigi.org
+#
+# Handles both bundle table layouts:
+#   0x140 records - reserved zero, sizes, 32-bit offset, timestamp
+#   0x130 records - 64-bit offset ahead of the sizes, no timestamp
+#
+# Told apart by the long after HASH: a reserved zero in the 0x140 layout, the
+# file offset in the 0x130 one, which is never 0.
+
+get EXT extension
+if EXT == "bundle"
+
+    idstring "POTATO70"
+    get BUNDLE_SIZE long
+    get DUMMY_SIZE long
+    get DATA_OFF long
+    math INFO_OFF = 0x20
+    math DATA_OFF + INFO_OFF
+
+    # Probe the first record: 0x20 record start + 0x100 name + 0x10 hash.
+    goto 0x130
+    get PROBE long
+    math IS_REMASTER = 0
+    if PROBE != 0
+        math IS_REMASTER = 1
+    endif
+
+    goto INFO_OFF
+    for INFO_OFF = INFO_OFF < DATA_OFF
+        getdstring NAME 0x100
+        getdstring HASH 16
+
+        if IS_REMASTER == 0
+            get ZERO long
+            get SIZE long
+            get ZSIZE long
+            get OFFSET long
+            get TSTAMP longlong
+            getdstring ZERO 16
+            get DUMMY long
+            get ZIP long
+        else
+            get OFFSET longlong
+            get SIZE long
+            get ZSIZE long
+            get DUMMY long
+            get ZIP long
+            getdstring ZERO 8
+        endif
+        savepos INFO_OFF
+
+        if ZIP == 0
+            log NAME OFFSET SIZE
+        elif ZIP == 1
+            comtype zlib
+            clog NAME OFFSET ZSIZE SIZE
+        elif ZIP == 2
+            comtype snappy
+            clog NAME OFFSET ZSIZE SIZE
+        elif ZIP == 3
+            comtype doboz
+            clog NAME OFFSET ZSIZE SIZE
+        else    # 4 and 5
+            comtype lz4
+            clog NAME OFFSET ZSIZE SIZE
+        endif
+    next
+
+elif EXT == "cache"
+
+    getdstring SIGN 4
+    goto 0
+    if SIGN == "CS3W"
+
+        idstring "CS3W"
+        get DUMMY long
+        get DUMMY long
+        get DUMMY long
+        get INFO_OFF long
+        get FILES long
+        get NAMES_OFF long
+        get NAMES_SIZE long
+
+        log MEMORY_FILE NAMES_OFF NAMES_SIZE
+
+        goto INFO_OFF
+        for i = 0 < FILES
+            get NAME_OFF long
+            get OFFSET long
+            get SIZE long
+            goto NAME_OFF MEMORY_FILE
+            get NAME string MEMORY_FILE
+            log NAME OFFSET SIZE
+        next i
+
+    else
+
+        for
+            get ZSIZE long
+            if ZSIZE == 0
+                padding 0x1000
+                get ZSIZE long
+            endif
+            get SIZE long
+            get TYPE byte
+            savepos OFFSET
+            clog "" OFFSET ZSIZE SIZE
+            math OFFSET + ZSIZE
+            goto OFFSET
+        next
+
+    endif
+
+else
+
+    print "Error: unsupported extension %EXT%"
+    cleanexit
+
+endif
