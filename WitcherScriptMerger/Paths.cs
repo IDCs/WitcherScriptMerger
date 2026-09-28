@@ -1,23 +1,24 @@
 ﻿using System;
 using System.IO;
 using System.Windows.Forms;
+using WitcherScriptMerger.Common;
 using WitcherScriptMerger.Tools;
 
 namespace WitcherScriptMerger
 {
     static class Paths
     {
-        public const string TempBundleContent = "tempbundlecontent";
-        public static string MergedBundleContent = "Merged Bundle Content";
+        public const string TempBundleContent = KnownPaths.TempBundleContent;
+        public static string MergedBundleContent = KnownPaths.MergedBundleContent;
         public static string MergedBundleContentAbsolute = Path.Combine(Environment.CurrentDirectory, MergedBundleContent);
-        public const string Inventory = "MergeInventory.xml";
-        public static string ModScriptBase = Path.Combine("content", "scripts");
-        public static string VanillaScriptBase = Path.Combine("content", "content0", "scripts");
-        public static string BundleBase = "content";
+        public const string Inventory = KnownPaths.Inventory;
+        public static string ModScriptBase = KnownPaths.ModScriptBase;
+        public static string VanillaScriptBase = KnownPaths.VanillaScriptBase;
+        public static string BundleBase = KnownPaths.BundleBase;
 
         public static string GameDirectory => Program.MainForm.GameDirectorySetting;
 
-        public static string GameExe => Path.Combine(GameDirectory, "bin", "x64", "witcher3.exe");
+        public static string GameExe => KnownPaths.ResolveGameExe(GameDirectory);
 
         public static string BundlesDirectory => Path.Combine(GameDirectory, BundleBase);
 

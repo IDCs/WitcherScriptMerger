@@ -1,32 +1,68 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Configuration;
+using System.IO;
 using System.Reflection;
 using System.Windows.Forms;
+using WitcherScriptMerger.Common;
 
 namespace WitcherScriptMerger
 {
     class AppSettings
     {
-        string _assemblyPath;
-
         Configuration _cachedConfig;
         Configuration CachedConfig
         {
             get
             {
                 if (_cachedConfig == null)
-                    _cachedConfig = ConfigurationManager.OpenExeConfiguration(_assemblyPath);
+                    _cachedConfig = OpenConfiguration();
                 return _cachedConfig;
             }
         }
 
         public bool HasConfigFile => CachedConfig.HasFile;
 
+        /// <summary>
+        /// Paths the configuration may sit beside, in preference order. A
+        /// release ships WitcherScriptMerger.exe.config and Vortex writes the
+        /// game and mod directories into it by name, so the apphost comes
+        /// first; the assembly-named config a plain build emits is the fallback.
+        /// </summary>
+        static IEnumerable<string> ConfigBasePaths()
+        {
+            var processPath = Environment.ProcessPath;
+            if (!string.IsNullOrEmpty(processPath) &&
+                string.Equals(Path.GetFileName(processPath), KnownPaths.Executable, StringComparison.OrdinalIgnoreCase))
+            {
+                yield return processPath;
+            }
+
+            var assemblyPath = Assembly.GetEntryAssembly()?.Location;
+            if (!string.IsNullOrEmpty(assemblyPath))
+            {
+                yield return assemblyPath;
+            }
+        }
+
+        static Configuration OpenConfiguration()
+        {
+            Configuration lastTried = null;
+            foreach (var basePath in ConfigBasePaths())
+            {
+                lastTried = ConfigurationManager.OpenExeConfiguration(basePath);
+                if (lastTried.HasFile)
+                {
+                    return lastTried;
+                }
+            }
+            // Nothing on disk. Returned anyway so the caller reports the miss.
+            return lastTried;
+        }
+
         public AppSettings()
         {
-            _assemblyPath = Assembly.GetEntryAssembly().Location;
-
-            if (!CachedConfig.HasFile)
+            if (CachedConfig == null || !CachedConfig.HasFile)
             {
                 MessageBox.Show(
                     "Config file is missing.",
