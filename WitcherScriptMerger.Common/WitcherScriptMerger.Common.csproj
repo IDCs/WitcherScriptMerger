@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Deliberately not *-windows and not self-contained: this holds the layout
+         knowledge the application, the tests and the release tooling all share,
+         so it has to be referencable from a plain console or test project. -->
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+</Project>
