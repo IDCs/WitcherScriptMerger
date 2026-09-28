@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
+using WitcherScriptMerger.Common;
 using WitcherScriptMerger.FileIndex;
 using WitcherScriptMerger.Forms;
 using WitcherScriptMerger.LoadOrder;
@@ -185,6 +186,11 @@ namespace WitcherScriptMerger.Inventory
 
             _vanillaFile = new FileInfo(fileNode.GetMetadata().FilePath);
 
+            // Asked over the mods' own copies. Inside the loop the first source
+            // is the merge output, which is legitimately missing vanilla lines.
+            if (!ConfirmMergeAgainstInstalledVanilla(checkedModNodes))
+                return;
+
             for (int i = 1; i < checkedModNodes.Length; ++i)
             {
                 ++ProgressInfo.CurrentMergeNum;
@@ -248,6 +254,61 @@ namespace WitcherScriptMerger.Inventory
                 _bundleChanged = true;
                 _pendingBundleMerges.Add(merge);
             }
+        }
+
+        /// <summary>
+        /// A copy built against a different version of the game is missing
+        /// whatever that version added, and a three way merge drops it without
+        /// saying so. Asked only when a merge is about to run.
+        /// </summary>
+        bool ConfirmMergeAgainstInstalledVanilla(TreeNode[] modNodes)
+        {
+            if (_vanillaFile == null || !_vanillaFile.Exists)
+                return true;
+
+            string vanillaText;
+            try
+            {
+                vanillaText = File.ReadAllText(_vanillaFile.FullName);
+            }
+            catch (Exception err) when (err is IOException || err is UnauthorizedAccessException)
+            {
+                return true;
+            }
+
+            var stale = new List<string>();
+            foreach (var node in modNodes)
+            {
+                var metadata = node.GetMetadata();
+                if (metadata?.FilePath == null || !File.Exists(metadata.FilePath))
+                    continue;
+                try
+                {
+                    var (missingLines, missingShare) =
+                        VanillaCoverage.Measure(vanillaText, File.ReadAllText(metadata.FilePath));
+                    if (missingLines >= VanillaCoverage.MinimumMissingLines &&
+                        missingShare >= VanillaCoverage.WarnThreshold)
+                    {
+                        stale.Add($"{node.Text} is missing {missingShare:P0} of it ({missingLines:N0} lines)");
+                    }
+                }
+                catch (Exception err) when (err is IOException || err is UnauthorizedAccessException)
+                {
+                    // Unreadable source; the merge itself will report it.
+                }
+            }
+
+            if (stale.Count == 0)
+                return true;
+
+            return DialogResult.Yes == Program.MainForm.ShowMessage(
+                $"These mods were built against a different version of {_vanillaFile.Name} "
+                + "than the one installed:\n\n  " + string.Join("\n  ", stale)
+                + "\n\nMerging them will drop the code your game has and they don't, which "
+                + "usually stops scripts compiling.\n\nMerge anyway?",
+                "Built Against Another Game Version",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
         }
 
         FileInfo MergeText(Merge merge, MergeSource source1, MergeSource source2, bool isBundled)
@@ -378,7 +439,11 @@ namespace WitcherScriptMerger.Inventory
                 {
                     ProgressInfo.CurrentAction = "Unpacking vanilla bundle content file";
                     var vanillaContentPath = UnpackFile(_vanillaFile.FullName, contentRelativePath, "Vanilla");
-                    _vanillaFile = new FileInfo(vanillaContentPath);
+                    // Unpacking reports its own failure; without the vanilla
+                    // side this falls back to a two way merge.
+                    _vanillaFile = vanillaContentPath != null
+                        ? new FileInfo(vanillaContentPath)
+                        : null;
                 }
             }
 
